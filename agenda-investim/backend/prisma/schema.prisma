@@ -1,0 +1,75 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql" url = env("DATABASE_URL") }
+model User {
+ id String @id @default(uuid())
+ name String
+ email String @unique
+ passwordHash String
+ sessions Session[]
+ investments Investment[]
+ createdAt DateTime @default(now())
+}
+model Session {
+ id String @id @default(uuid())
+ tokenHash String @unique
+ userId String
+ user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+ expiresAt DateTime
+ createdAt DateTime @default(now())
+}
+model Investment {
+ id String @id @default(uuid())
+ userId String
+ user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+ name String
+ category String
+ institution String?
+ currency String @db.VarChar(3)
+ initialAmount Decimal @db.Decimal(24, 8)
+ investmentDate DateTime @db.Date
+ maturityDate DateTime? @db.Date
+ yieldType String @default("UNKNOWN")
+ annualRate Decimal? @db.Decimal(14, 8)
+ notes String?
+ status String @default("ACTIVE")
+ transactions Transaction[]
+ payments Payment[]
+ valuations Valuation[]
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@index([userId, status])
+}
+model Transaction {
+ id String @id @default(uuid())
+ investmentId String
+ investment Investment @relation(fields: [investmentId], references: [id], onDelete: Restrict)
+ type String
+ amount Decimal @db.Decimal(24, 8)
+ effectiveDate DateTime @db.Date
+ notes String?
+ idempotencyKey String?
+ payment Payment? @relation("Settlement")
+ createdAt DateTime @default(now())
+ @@unique([investmentId, idempotencyKey])
+}
+model Payment {
+ id String @id @default(uuid())
+ investmentId String
+ investment Investment @relation(fields: [investmentId], references: [id], onDelete: Restrict)
+ dueDate DateTime @db.Date
+ expectedAmount Decimal? @db.Decimal(24, 8)
+ status String @default("PENDING")
+ settlementId String? @unique
+ settlement Transaction? @relation("Settlement", fields: [settlementId], references: [id])
+ createdAt DateTime @default(now())
+ @@index([investmentId, dueDate])
+}
+model Valuation {
+ id String @id @default(uuid())
+ investmentId String
+ investment Investment @relation(fields: [investmentId], references: [id], onDelete: Restrict)
+ value Decimal @db.Decimal(24, 8)
+ valuationDate DateTime @db.Date
+ createdAt DateTime @default(now())
+ @@unique([investmentId, valuationDate])
+}

@@ -1,0 +1,16 @@
+import { Router, type RequestHandler } from 'express';
+import { z } from 'zod';
+import argon2 from 'argon2';
+import { createHash,randomBytes } from 'node:crypto';
+import { db } from './db.js';
+import { env } from './config.js';
+import { HttpError } from './errors.js';
+export const auth=Router();
+const hash=(s:string)=>createHash('sha256').update(s+env.SESSION_SECRET).digest('hex');
+const cookieName='agenda_session';
+const cookieOptions={httpOnly:true,secure:env.NODE_ENV==='production',sameSite:'lax' as const,path:'/'};
+const credentials=z.object({email:z.string().email().transform(x=>x.toLowerCase().trim()),password:z.string().min(8)});
+auth.post('/register',async(req,res)=>{const data=credentials.extend({name:z.string().trim().min(2).max(120)}).parse(req.body);if(await db.user.findUnique({where:{email:data.email}}))throw new HttpError(409,'Email já registado');const user=await db.user.create({data:{name:data.name,email:data.email,passwordHash:await argon2.hash(data.password)}});res.status(201).json({id:user.id,name:user.name,email:user.email});});
+auth.post('/login',async(req,res)=>{const data=credentials.parse(req.body);const user=await db.user.findUnique({where:{email:data.email}});if(!user||!(await argon2.verify(user.passwordHash,data.password)))throw new HttpError(401,'Credenciais inválidas');const token=randomBytes(32).toString('hex');await db.session.create({data:{userId:user.id,tokenHash:hash(token),expiresAt:new Date(Date.now()+7*86400000)}});res.cookie(cookieName,token,{...cookieOptions,maxAge:7*86400000});res.json({id:user.id,name:user.name,email:user.email});});
+export const requireAuth:RequestHandler=async(req,res,next)=>{const token=req.cookies?.[cookieName];if(typeof token!=='string')throw new HttpError(401,'Autenticação necessária');const session=await db.session.findUnique({where:{tokenHash:hash(token)},include:{user:true}});if(!session||session.expiresAt<=new Date())throw new HttpError(401,'Sessão inválida');res.locals.userId=session.userId;next();};
+auth.post('/logout',async(req,res)=>{const token=req.cookies?.[cookieName];if(typeof token==='string')await db.session.deleteMany({where:{tokenHash:hash(token)}});res.clearCookie(cookieName,cookieOptions);res.status(204).end();});

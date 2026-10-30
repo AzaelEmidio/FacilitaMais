@@ -1,0 +1,1 @@
+import {describe,it,expect} from 'vitest';import {simpleInterest} from '../src/financial.js';describe('juros simples',()=>{it('calcula exemplo contratual de um ano',()=>expect(simpleInterest('500000','12','1')).toEqual({grossInterest:'60000.00',grossMaturity:'560000.00'}));it('não aceita capital negativo',()=>expect(()=>simpleInterest('-1','12','1')).toThrow());});
